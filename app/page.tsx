@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
+  
   const [trips, setTrips] = useState([
     { id: 1, name: 'NYC Trip', date: '2024-01-15', total: 450.50, settled: false },
     { id: 2, name: 'Beach Weekend', date: '2023-12-20', total: 320.00, settled: true },
@@ -12,6 +15,10 @@ export default function Home() {
     { id: 1, person: 'Sarah', amount: 45.50, trip: 'NYC Trip' },
     { id: 2, person: 'Mike', amount: 32.25, trip: 'NYC Trip' },
   ]);
+
+  const handleViewDetails = (tripId: number) => {
+    router.push(`/trips/${tripId}`);
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -70,9 +77,12 @@ export default function Home() {
                 <span className="text-black">Total expenses</span>
                 <span className="font-bold text-green-600">${trip.total.toFixed(2)}</span>
               </div>
-              <div className="mt-2 text-sm text-blue-500">
+              <button 
+                onClick={() => handleViewDetails(trip.id)}
+                className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
+              >
                 View details →
-              </div>
+              </button>
             </div>
           ))}
         </div>
@@ -93,6 +103,12 @@ export default function Home() {
                 <span className="text-black">Total expenses</span>
                 <span className="font-bold text-black">${trip.total.toFixed(2)}</span>
               </div>
+              <button 
+                onClick={() => handleViewDetails(trip.id)}
+                className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
+              >
+                View details →
+              </button>
             </div>
           ))}
         </div>
