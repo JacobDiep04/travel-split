@@ -19,7 +19,7 @@ export default function Home() {
 
   const fetchTrips = async () => {
     try {
-      setLoading(true); // Add this to show loading state
+      setLoading(true);
       const { data, error } = await supabase
         .from('trips')
         .select('*')
@@ -78,7 +78,6 @@ export default function Home() {
           <button 
             onClick={() => {
               router.push('/');
-              // Refresh trips when clicking home
               fetchTrips();
             }}
             className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 font-semibold flex items-center gap-3 text-black"
@@ -135,7 +134,11 @@ export default function Home() {
                 <p className="text-gray-500 text-sm">No active trips</p>
               ) : (
                 trips.filter(trip => !trip.settled).map(trip => (
-                  <div key={trip.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer">
+                  <div 
+                    key={trip.id} 
+                    onClick={() => handleViewDetails(trip.id)}
+                    className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-bold text-lg text-black">{trip.name}</h3>
                       <span className="text-sm text-gray-500">{trip.date}</span>
@@ -144,12 +147,6 @@ export default function Home() {
                       <span className="text-black">Total expenses</span>
                       <span className="font-bold text-green-600">${parseFloat(trip.total).toFixed(2)}</span>
                     </div>
-                    <button 
-                      onClick={() => handleViewDetails(trip.id)}
-                      className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
-                    >
-                      View details →
-                    </button>
                   </div>
                 ))
               )}
@@ -162,7 +159,11 @@ export default function Home() {
                 <p className="text-gray-500 text-sm">No settled trips</p>
               ) : (
                 trips.filter(trip => trip.settled).map(trip => (
-                  <div key={trip.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer opacity-75">
+                  <div 
+                    key={trip.id} 
+                    onClick={() => handleViewDetails(trip.id)}
+                    className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer opacity-75 transition-colors"
+                  >
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h3 className="font-bold text-black">{trip.name}</h3>
@@ -174,12 +175,6 @@ export default function Home() {
                       <span className="text-black">Total expenses</span>
                       <span className="font-bold text-black">${parseFloat(trip.total).toFixed(2)}</span>
                     </div>
-                    <button 
-                      onClick={() => handleViewDetails(trip.id)}
-                      className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
-                    >
-                      View details →
-                    </button>
                   </div>
                 ))
               )}
