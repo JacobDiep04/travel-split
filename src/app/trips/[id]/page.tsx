@@ -182,7 +182,10 @@ export default function TripDetails() {
         <div className="p-4">
           <div className="flex justify-between items-center mb-3">
             <h2 className="font-bold text-lg text-black">Expenses</h2>
-            <button className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600">
+            <button 
+              onClick={() => router.push(`/trips/${tripId}/expenses/new`)}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600"
+            >
               Add Expense
             </button>
           </div>
