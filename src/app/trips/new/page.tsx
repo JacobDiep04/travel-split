@@ -13,52 +13,60 @@ export default function NewTrip() {
     participants: ['']
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      // Insert the trip
-      const { data: trip, error: tripError } = await supabase
-        .from('trips')
-        .insert([
-          {
-            name: formData.name,
-            date: formData.date,
-            total: 0,
-            settled: false
-          }
-        ])
-        .select()
-        .single();
-
-      if (tripError) throw tripError;
-
-      // Insert participants
-      const participantsToInsert = formData.participants
-        .filter(p => p.trim() !== '')
-        .map(name => ({
-          trip_id: trip.id,
-          name: name.trim()
-        }));
-
-      if (participantsToInsert.length > 0) {
-        const { error: participantsError } = await supabase
-          .from('participants')
-          .insert(participantsToInsert);
-
-        if (participantsError) throw participantsError;
-      }
-
-      // Navigate to the new trip
-      router.push(`/trips/${trip.id}`);
-    } catch (error) {
-      console.error('Error creating trip:', error);
-      alert('Failed to create trip. Please try again.');
-    } finally {
-      setLoading(false);
+  try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('Not authenticated');
     }
-  };
+
+    // Insert the trip
+    const { data: trip, error: tripError } = await supabase
+      .from('trips')
+      .insert([
+        {
+          name: formData.name,
+          date: formData.date,
+          total: 0,
+          settled: false,
+          user_id: user.id  // Add this line
+        }
+      ])
+      .select()
+      .single();
+
+    if (tripError) throw tripError;
+
+    // Insert participants
+    const participantsToInsert = formData.participants
+      .filter(p => p.trim() !== '')
+      .map(name => ({
+        trip_id: trip.id,
+        name: name.trim()
+      }));
+
+    if (participantsToInsert.length > 0) {
+      const { error: participantsError } = await supabase
+        .from('participants')
+        .insert(participantsToInsert);
+
+      if (participantsError) throw participantsError;
+    }
+
+    // Navigate to the new trip
+    router.push(`/trips/${trip.id}`);
+  } catch (error) {
+    console.error('Error creating trip:', error);
+    alert('Failed to create trip. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const addParticipant = () => {
     setFormData({

@@ -59,6 +59,11 @@ export default function Home() {
     router.push(`/trips/${tripId}`);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/auth/login');
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -97,6 +102,14 @@ export default function Home() {
           <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
             <span className="text-xl">👤</span>
             Profile
+          </button>
+
+          <button 
+            onClick={handleLogout}
+            className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-red-600"
+            >
+            <span className="text-xl">🚪</span>
+            Logout
           </button>
         </nav>
 

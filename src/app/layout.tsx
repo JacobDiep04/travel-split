@@ -12,22 +12,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
-  title: 'Travel Split',
-  description: 'Split travel expenses with friends',
-  manifest: '/manifest.json',
-  themeColor: '#0070f3',
+export const metadata: Metadata = {
+  title: "Travel Split",
+  description: "Split travel expenses with friends",
+  manifest: "/manifest.json",
+  themeColor: "#0070f3",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         {children}
       </body>
