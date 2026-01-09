@@ -11,11 +11,26 @@ export default function Home() {
   const [outstandingPayments, setOutstandingPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch trips from database
   useEffect(() => {
-    fetchTrips();
-    fetchPayments();
-  }, []);
+  const checkAuthAndFetch = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.push('/auth/login');
+      return;
+    }
+
+    await Promise.all([
+      fetchTrips(),
+      fetchPayments(),
+    ]);
+  };
+
+  checkAuthAndFetch();
+}, []);
+
 
   const fetchTrips = async () => {
     try {

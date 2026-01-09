@@ -5,6 +5,10 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
 
+  const response = NextResponse.redirect(
+    new URL('/', requestUrl.origin)
+  );
+
   if (code) {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,14 +19,14 @@ export async function GET(request: NextRequest) {
             return request.cookies.get(name)?.value;
           },
           set(name: string, value: string, options: CookieOptions) {
-            request.cookies.set({
+            response.cookies.set({
               name,
               value,
               ...options,
             });
           },
           remove(name: string, options: CookieOptions) {
-            request.cookies.set({
+            response.cookies.set({
               name,
               value: '',
               ...options,
@@ -35,6 +39,5 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  // Redirect to home page after successful auth
-  return NextResponse.redirect(new URL('/', requestUrl.origin));
+  return response;
 }
