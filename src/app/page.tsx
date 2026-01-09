@@ -34,6 +34,7 @@ export default function Home() {
 
   const fetchTrips = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('trips')
         .select('*')
@@ -94,7 +95,13 @@ export default function Home() {
         <h2 className="text-2xl font-bold mb-8 text-blue-500">TravelSplit</h2>
         
         <nav className="space-y-2">
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 font-semibold flex items-center gap-3 text-black">
+          <button 
+            onClick={() => {
+              router.push('/');
+              fetchTrips();
+            }}
+            className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 font-semibold flex items-center gap-3 text-black"
+          >
             <span className="text-xl">🏠</span>
             Home
           </button>
@@ -128,12 +135,12 @@ export default function Home() {
           </button>
         </nav>
 
-          <button 
-            onClick={() => router.push('/trips/new')}
-            className="w-full mt-6 bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600"
-          >
-            New Trip
-          </button>
+        <button 
+          onClick={() => router.push('/trips/new')}
+          className="w-full mt-6 bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600"
+        >
+          New Trip
+        </button>
       </aside>
 
       {/* Main Content - Trips Feed */}
@@ -151,50 +158,54 @@ export default function Home() {
             {/* Active Trips */}
             <div className="border-b border-gray-200 p-4">
               <h2 className="font-bold text-lg mb-3 text-black">Active Trips</h2>
-              {trips.filter(trip => !trip.settled).map(trip => (
-                <div key={trip.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-lg text-black">{trip.name}</h3>
-                    <span className="text-sm text-gray-500">{trip.date}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-black">Total expenses</span>
-                    <span className="font-bold text-green-600">${parseFloat(trip.total).toFixed(2)}</span>
-                  </div>
-                  <button 
+              {trips.filter(trip => !trip.settled).length === 0 ? (
+                <p className="text-gray-500 text-sm">No active trips</p>
+              ) : (
+                trips.filter(trip => !trip.settled).map(trip => (
+                  <div 
+                    key={trip.id} 
                     onClick={() => handleViewDetails(trip.id)}
-                    className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
+                    className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    View details →
-                  </button>
-                </div>
-              ))}
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-lg text-black">{trip.name}</h3>
+                      <span className="text-sm text-gray-500">{trip.date}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-black">Total expenses</span>
+                      <span className="font-bold text-green-600">${parseFloat(trip.total).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Previous Trips */}
             <div className="p-4">
               <h2 className="font-bold text-lg mb-3 text-black">Previous Trips</h2>
-              {trips.filter(trip => trip.settled).map(trip => (
-                <div key={trip.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer opacity-75">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-bold text-black">{trip.name}</h3>
-                      <span className="text-xs text-green-600">✓ Settled</span>
-                    </div>
-                    <span className="text-sm text-gray-500">{trip.date}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-black">Total expenses</span>
-                    <span className="font-bold text-black">${parseFloat(trip.total).toFixed(2)}</span>
-                  </div>
-                  <button 
+              {trips.filter(trip => trip.settled).length === 0 ? (
+                <p className="text-gray-500 text-sm">No settled trips</p>
+              ) : (
+                trips.filter(trip => trip.settled).map(trip => (
+                  <div 
+                    key={trip.id} 
                     onClick={() => handleViewDetails(trip.id)}
-                    className="mt-2 text-sm text-blue-500 hover:text-blue-700 hover:underline"
+                    className="bg-white border border-gray-200 rounded-lg p-4 mb-3 hover:bg-gray-50 cursor-pointer opacity-75 transition-colors"
                   >
-                    View details →
-                  </button>
-                </div>
-              ))}
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-bold text-black">{trip.name}</h3>
+                        <span className="text-xs text-green-600">✓ Settled</span>
+                      </div>
+                      <span className="text-sm text-gray-500">{trip.date}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-black">Total expenses</span>
+                      <span className="font-bold text-black">${parseFloat(trip.total).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}
