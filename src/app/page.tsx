@@ -2,35 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function Home() {
   const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   
   const [trips, setTrips] = useState<any[]>([]);
   const [outstandingPayments, setOutstandingPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  const checkAuthAndFetch = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const checkAuthAndFetch = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session) {
-      router.push('/auth/login');
-      return;
-    }
+      if (!session) {
+        router.push('/auth/login');
+        return;
+      }
 
-    await Promise.all([
-      fetchTrips(),
-      fetchPayments(),
-    ]);
-  };
+      await Promise.all([
+        fetchTrips(),
+        fetchPayments(),
+      ]);
+    };
 
-  checkAuthAndFetch();
-}, []);
-
+    checkAuthAndFetch();
+  }, [router]);
 
   const fetchTrips = async () => {
     try {
@@ -129,7 +132,7 @@ export default function Home() {
           <button 
             onClick={handleLogout}
             className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-red-600"
-            >
+          >
             <span className="text-xl">🚪</span>
             Logout
           </button>

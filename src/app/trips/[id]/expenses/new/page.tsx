@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function NewExpense() {
   const params = useParams();
   const router = useRouter();
   const tripId = Number(params.id);
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -22,9 +27,9 @@ export default function NewExpense() {
   const [participants, setParticipants] = useState<string[]>([]);
 
   // Fetch participants when component loads
-        useEffect(() => {
+  useEffect(() => {
     fetchParticipants();
-    }, []);
+  }, []);
 
   const fetchParticipants = async () => {
     try {

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function Login() {
   const router = useRouter();
@@ -14,6 +14,22 @@ export default function Login() {
     confirmPassword: ''
   });
   const [error, setError] = useState('');
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/');
+      }
+    };
+    checkUser();
+  }, [router, supabase]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,13 +54,19 @@ export default function Login() {
         alert('Check your email for the confirmation link!');
       } else {
         // Sign In
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
         if (error) throw error;
-        router.push('/');
+        
+        // Wait a moment for the session to be fully established
+        if (data.session) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          router.push('/');
+          router.refresh(); // Force a refresh to update the middleware
+        }
       }
     } catch (error: any) {
       setError(error.message);
@@ -55,15 +77,22 @@ export default function Login() {
 
   const handleGoogleAuth = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         }
       });
 
+      console.log('OAuth initiated:', data);
+
       if (error) throw error;
     } catch (error: any) {
+      console.error('OAuth error:', error);
       setError(error.message);
     }
   };
