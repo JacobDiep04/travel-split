@@ -128,12 +128,12 @@ const handleSubmit = async (e: React.FormEvent) => {
           </button>
         </nav>
 
-        <button 
+        {/* <button 
           onClick={() => router.push('/trips/new')}
           className="w-full mt-6 bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600"
         >
           New Trip
-        </button>
+        </button> */}
       </aside>
 
       {/* Main Content - New Trip Form */}
