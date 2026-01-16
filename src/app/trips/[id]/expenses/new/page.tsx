@@ -74,7 +74,10 @@ export default function NewExpense() {
         .select('amount')
         .eq('trip_id', tripId);
 
-      const total = expenses?.reduce((sum, exp) => sum + parseFloat(exp.amount), 0) || 0;
+      // Fix floating-point precision by rounding to 2 decimal places
+      const total = expenses?.reduce((sum, exp) => {
+        return Math.round((sum + parseFloat(exp.amount)) * 100) / 100;
+      }, 0) || 0;
 
       await supabase
         .from('trips')
@@ -102,7 +105,7 @@ export default function NewExpense() {
 
   const amount = parseFloat(formData.amount) || 0;
   const splitCount = formData.splitWith.length || 1;
-  const perPersonAmount = amount / splitCount;
+  const perPersonAmount = Math.round((amount / splitCount) * 100) / 100;
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -140,12 +143,12 @@ export default function NewExpense() {
           </button>
         </nav>
 
-        <button 
+        {/* <button 
           onClick={() => router.push('/trips/new')}
           className="w-full mt-6 bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600"
         >
           New Trip
-        </button>
+        </button> */}
       </aside>
 
       {/* Main Content - New Expense Form */}
