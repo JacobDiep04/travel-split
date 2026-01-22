@@ -2,243 +2,311 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function NewTrip() {
   const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const [tripName, setTripName] = useState('');
+  const [tripDate, setTripDate] = useState('');
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    date: '',
-    participants: ['']
-  });
+  const [error, setError] = useState('');
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<any[]>([]);
+  const [fetchingFriends, setFetchingFriends] = useState(false);
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
+  const fetchFriends = async () => {
+    try {
+      setFetchingFriends(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  try {
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('Not authenticated');
+      const { data, error } = await supabase
+        .from('friends')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      setFriends(data || []);
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+    } finally {
+      setFetchingFriends(false);
     }
+  };
 
-    // Insert the trip
-    const { data: trip, error: tripError } = await supabase
-      .from('trips')
-      .insert([
+  const openAddMemberModal = async () => {
+    await fetchFriends();
+    setShowAddMemberModal(true);
+  };
+
+  const toggleMemberSelection = (friend: any) => {
+    setSelectedMembers(prev => {
+      const exists = prev.find(m => m.id === friend.id);
+      if (exists) {
+        return prev.filter(m => m.id !== friend.id);
+      } else {
+        return [...prev, friend];
+      }
+    });
+  };
+
+  const removeMember = (friendId: number) => {
+    setSelectedMembers(prev => prev.filter(m => m.id !== friendId));
+  };
+
+  const handleCreateTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('You must be logged in to create a trip');
+      }
+
+      // Create the trip
+      const { data: tripData, error: tripError } = await supabase
+        .from('trips')
+        .insert([
+          {
+            name: tripName,
+            date: tripDate,
+            total: 0,
+            settled: false,
+            user_id: user.id
+          }
+        ])
+        .select()
+        .single();
+
+      if (tripError) throw tripError;
+
+      // Add the owner as a participant first
+      const ownerName = user.user_metadata?.name || user.email?.split('@')[0] || 'Me';
+      const participantsToAdd = [
         {
-          name: formData.name,
-          date: formData.date,
-          total: 0,
-          settled: false,
-          user_id: user.id  // Add this line
-        }
-      ])
-      .select()
-      .single();
+          trip_id: tripData.id,
+          name: ownerName
+        },
+        // Add selected friends as participants
+        ...selectedMembers.map(friend => ({
+          trip_id: tripData.id,
+          name: friend.friend_name
+        }))
+      ];
 
-    if (tripError) throw tripError;
+      if (participantsToAdd.length > 0) {
+        const { error: participantError } = await supabase
+          .from('participants')
+          .insert(participantsToAdd);
 
-    // Insert participants
-    const participantsToInsert = formData.participants
-      .filter(p => p.trim() !== '')
-      .map(name => ({
-        trip_id: trip.id,
-        name: name.trim()
-      }));
+        if (participantError) throw participantError;
+      }
 
-    if (participantsToInsert.length > 0) {
-      const { error: participantsError } = await supabase
-        .from('participants')
-        .insert(participantsToInsert);
-
-      if (participantsError) throw participantsError;
+      // Redirect to the trip details page
+      router.push(`/trips/${tripData.id}`);
+    } catch (error: any) {
+      setError(error.message);
+      setLoading(false);
     }
-
-    // Navigate to the new trip
-    router.push(`/trips/${trip.id}`);
-  } catch (error) {
-    console.error('Error creating trip:', error);
-    alert('Failed to create trip. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const addParticipant = () => {
-    setFormData({
-      ...formData,
-      participants: [...formData.participants, '']
-    });
-  };
-
-  const updateParticipant = (index: number, value: string) => {
-    const newParticipants = [...formData.participants];
-    newParticipants[index] = value;
-    setFormData({
-      ...formData,
-      participants: newParticipants
-    });
-  };
-
-  const removeParticipant = (index: number) => {
-    const newParticipants = formData.participants.filter((_, i) => i !== index);
-    setFormData({
-      ...formData,
-      participants: newParticipants
-    });
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* Left Sidebar - Navigation */}
-      <aside className="w-64 bg-white border-r border-gray-200 p-6 sticky top-0 h-screen">
-        <h2 className="text-2xl font-bold mb-8 text-blue-500">TravelSplit</h2>
-        
-        <nav className="space-y-2">
-          <button 
-            onClick={() => router.push('/')}
-            className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 font-semibold flex items-center gap-3 text-black"
-          >
-            <span className="text-xl">🏠</span>
-            Home
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">🔍</span>
-            Explore Trips
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">🔔</span>
-            Notifications
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">💬</span>
-            Messages
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">👤</span>
-            Profile
-          </button>
-        </nav>
-
-        {/* <button 
-          onClick={() => router.push('/trips/new')}
-          className="w-full mt-6 bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600"
-        >
-          New Trip
-        </button> */}
-      </aside>
-
-      {/* Main Content - New Trip Form */}
-      <main className="flex-1 max-w-2xl border-r border-gray-200">
-        <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-gray-200 p-4">
-          <button 
-            onClick={() => router.back()}
-            className="text-blue-500 hover:text-blue-700 mb-2 flex items-center gap-1"
-          >
-            ← Back
-          </button>
-          <h1 className="text-2xl font-bold text-black">Create New Trip</h1>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Trip Name */}
-          <div>
-            <label className="block text-sm font-semibold text-black mb-2">
-              Trip Name *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Summer Beach Trip"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-            />
-          </div>
-
-          {/* Trip Date */}
-          <div>
-            <label className="block text-sm font-semibold text-black mb-2">
-              Trip Date *
-            </label>
-            <input
-              type="date"
-              required
-              value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-            />
-          </div>
-
-          {/* Participants */}
-          <div>
-            <label className="block text-sm font-semibold text-black mb-2">
-              Participants
-            </label>
-            <div className="space-y-2">
-              {formData.participants.map((participant, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={participant}
-                    onChange={(e) => updateParticipant(index, e.target.value)}
-                    placeholder={`Person ${index + 1}`}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                  />
-                  {formData.participants.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeParticipant(index)}
-                      className="px-4 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
-                    >
-                      Remove
-                    </button>
-                  )}
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-2xl mx-auto">
+        {/* Add Members Modal */}
+        {showAddMemberModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[80vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold text-black mb-4">Add Members</h2>
+              
+              {fetchingFriends ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-600">Loading friends...</p>
                 </div>
-              ))}
+              ) : friends.length > 0 ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Select friends to add to this trip
+                  </p>
+                  <div className="space-y-2 mb-6">
+                    {friends.map((friend) => {
+                      const isSelected = selectedMembers.find(m => m.id === friend.id);
+                      return (
+                        <label 
+                          key={friend.id} 
+                          className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer border border-gray-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!isSelected}
+                            onChange={() => toggleMemberSelection(friend)}
+                            className="w-5 h-5 text-blue-500"
+                          />
+                          <div className="flex-1">
+                            <p className="font-semibold text-black">{friend.friend_name}</p>
+                            <p className="text-sm text-gray-500">{friend.friend_email}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowAddMemberModal(false)}
+                      className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="text-4xl mb-3">👥</div>
+                  <p className="text-gray-600 mb-4">
+                    You don't have any friends yet. Add friends first to invite them to trips.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowAddMemberModal(false);
+                        router.push('/friends');
+                      }}
+                      className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600"
+                    >
+                      Go to Friends
+                    </button>
+                    <button
+                      onClick={() => setShowAddMemberModal(false)}
+                      className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={addParticipant}
-              className="mt-2 text-blue-500 hover:text-blue-700 font-semibold"
-            >
-              + Add Participant
-            </button>
           </div>
+        )}
 
-          {/* Submit Button */}
-          <div className="pt-4">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating...' : 'Create Trip'}
-            </button>
-          </div>
-        </form>
-      </main>
-
-      {/* Right Sidebar - Tips */}
-      <aside className="w-80 bg-white p-6 sticky top-0 h-screen overflow-y-auto">
-        <div className="bg-blue-50 rounded-lg p-4">
-          <h2 className="font-bold text-lg mb-3 text-black">💡 Tips</h2>
-          <ul className="space-y-2 text-sm text-gray-700">
-            <li>• Give your trip a memorable name</li>
-            <li>• Add all participants who will share expenses</li>
-            <li>• You can add expenses after creating the trip</li>
-            <li>• Participants can be edited later</li>
-          </ul>
+        <div className="mb-6">
+          <button
+            onClick={() => router.push('/')}
+            className="text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-2"
+          >
+            ← Back to Home
+          </button>
         </div>
-      </aside>
+
+        <div className="bg-white rounded-lg shadow-lg p-8">
+          <h1 className="text-3xl font-bold text-blue-500 mb-6">Create New Trip</h1>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleCreateTrip} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Trip Name
+              </label>
+              <input
+                type="text"
+                required
+                value={tripName}
+                onChange={(e) => setTripName(e.target.value)}
+                placeholder="e.g., Summer Beach Trip 2024"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Trip Date
+              </label>
+              <input
+                type="date"
+                required
+                value={tripDate}
+                onChange={(e) => setTripDate(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+              />
+            </div>
+
+            {/* Members Section */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Members
+                </label>
+                <button
+                  type="button"
+                  onClick={openAddMemberModal}
+                  className="text-blue-500 hover:text-blue-700 font-semibold text-sm"
+                >
+                  + Add Members
+                </button>
+              </div>
+              
+              {selectedMembers.length > 0 ? (
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                    <span className="font-semibold">You</span>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Owner</span>
+                  </div>
+                  {selectedMembers.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between bg-white p-2 rounded">
+                      <div>
+                        <p className="font-semibold text-black text-sm">{member.friend_name}</p>
+                        <p className="text-xs text-gray-500">{member.friend_email}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeMember(member.id)}
+                        className="text-red-500 hover:text-red-700 font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <p className="text-gray-500 mb-2">No members added yet</p>
+                  <p className="text-sm text-gray-400">You'll be added as the owner automatically</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="flex-1 bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 bg-blue-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Creating...' : 'Create Trip'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

@@ -28,6 +28,8 @@ export default function TripDetails() {
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [selectedFriendId, setSelectedFriendId] = useState('');
 
   useEffect(() => {
     checkUser();
@@ -37,6 +39,23 @@ export default function TripDetails() {
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setCurrentUser(user);
+  };
+
+  const fetchFriends = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('friends')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      setFriends(data || []);
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+    }
   };
 
   const fetchTripData = async () => {
@@ -84,22 +103,36 @@ export default function TripDetails() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberName.trim()) return;
+    if (!selectedFriendId) return;
 
     setAddingMember(true);
     try {
+      const selectedFriend = friends.find(f => f.id === parseInt(selectedFriendId));
+      if (!selectedFriend) throw new Error('Friend not found');
+
+      // Check if friend is already a participant
+      const alreadyAdded = participants.some(
+        p => p.name.toLowerCase() === selectedFriend.friend_name.toLowerCase()
+      );
+
+      if (alreadyAdded) {
+        alert(`${selectedFriend.friend_name} is already a member of this trip!`);
+        setAddingMember(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('participants')
         .insert([
           {
             trip_id: tripId,
-            name: newMemberName.trim()
+            name: selectedFriend.friend_name
           }
         ]);
 
       if (error) throw error;
 
-      setNewMemberName('');
+      setSelectedFriendId('');
       setShowAddMemberModal(false);
       fetchTripData(); // Refresh data
     } catch (error) {
@@ -108,6 +141,11 @@ export default function TripDetails() {
     } finally {
       setAddingMember(false);
     }
+  };
+
+  const openAddMemberModal = async () => {
+    await fetchFriends();
+    setShowAddMemberModal(true);
   };
 
   const handleRemoveMember = async (participantId: number, participantName: string) => {
@@ -321,42 +359,75 @@ export default function TripDetails() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-black mb-4">Add Member</h2>
             
-            <form onSubmit={handleAddMember}>
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Member Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  placeholder="Enter name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                  autoFocus
-                />
-              </div>
+            {friends.length > 0 ? (
+              <form onSubmit={handleAddMember}>
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Select Friend
+                  </label>
+                  <select
+                    required
+                    value={selectedFriendId}
+                    onChange={(e) => setSelectedFriendId(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                  >
+                    <option value="">Choose a friend...</option>
+                    {friends.map((friend) => (
+                      <option key={friend.id} value={friend.id}>
+                        {friend.friend_name} ({friend.friend_email})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Only friends can be added to trips
+                  </p>
+                </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddMemberModal(false);
-                    setNewMemberName('');
-                  }}
-                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingMember}
-                  className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-400"
-                >
-                  {addingMember ? 'Adding...' : 'Add Member'}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMemberModal(false);
+                      setSelectedFriendId('');
+                    }}
+                    className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingMember}
+                    className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 disabled:bg-gray-400"
+                  >
+                    {addingMember ? 'Adding...' : 'Add Member'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="text-center py-4">
+                <div className="text-4xl mb-3">👥</div>
+                <p className="text-gray-600 mb-4">
+                  You don't have any friends yet. Add friends first to invite them to trips.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAddMemberModal(false);
+                      router.push('/friends');
+                    }}
+                    className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600"
+                  >
+                    Go to Friends
+                  </button>
+                  <button
+                    onClick={() => setShowAddMemberModal(false)}
+                    className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-            </form>
+            )}
           </div>
         </div>
       )}
@@ -500,7 +571,7 @@ export default function TripDetails() {
             <h2 className="font-bold text-lg text-black">Participants</h2>
             {isOwner && !trip.settled && (
               <button
-                onClick={() => setShowAddMemberModal(true)}
+                onClick={openAddMemberModal}
                 className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600"
               >
                 + Add Member
@@ -538,7 +609,13 @@ export default function TripDetails() {
             <h2 className="font-bold text-lg text-black">Expenses</h2>
             {!trip.settled && (
               <button 
-                onClick={() => router.push(`/trips/${tripId}/expenses/new`)}
+                onClick={() => {
+                  if (participants.length === 0) {
+                    alert('Please add participants to this trip before creating expenses. Click "+ Add Member" in the Participants section above.');
+                    return;
+                  }
+                  router.push(`/trips/${tripId}/expenses/new`);
+                }}
                 className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600"
               >
                 Add Expense
@@ -576,7 +653,14 @@ export default function TripDetails() {
             </div>
           ) : (
             <div className="text-center text-gray-500 py-8">
-              <p>No expenses yet. Add your first expense!</p>
+              {participants.length === 0 ? (
+                <div>
+                  <p className="mb-2">No participants yet.</p>
+                  <p className="text-sm">Add participants first, then you can create expenses.</p>
+                </div>
+              ) : (
+                <p>No expenses yet. Add your first expense!</p>
+              )}
             </div>
           )}
         </div>
