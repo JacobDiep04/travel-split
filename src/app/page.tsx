@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+import Sidebar from '@/components/Sidebar';
 
 export default function Home() {
   const router = useRouter();
@@ -16,9 +17,6 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
   const [greeting, setGreeting] = useState<string>('');
-  const [userEmail, setUserEmail] = useState<string>('');
-  const [userAvatar, setUserAvatar] = useState<string>('');
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   useEffect(() => {
     const checkAuthAndFetch = async () => {
@@ -31,18 +29,11 @@ export default function Home() {
         return;
       }
 
-      // Get user's name
+      // Get user's name for greeting
       const { data: { user } } = await supabase.auth.getUser();
       const fullName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'there';
       const firstName = fullName.split(' ')[0];
       setUserName(firstName);
-      setUserEmail(user?.email || '');
-      
-      // Get avatar - use Google profile picture if available, otherwise use default
-      const avatar = user?.user_metadata?.avatar_url || 
-                     user?.user_metadata?.picture || 
-                     `https://api.dicebear.com/7.x/initials/svg?seed=${firstName}`;
-      setUserAvatar(avatar);
 
       // Set greeting based on time of day
       const hour = new Date().getHours();
@@ -106,11 +97,6 @@ export default function Home() {
     router.push(`/trips/${tripId}`);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/auth/login');
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -122,82 +108,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Left Sidebar - Navigation */}
-      <aside className="w-64 bg-white border-r border-gray-200 p-6 sticky top-0 h-screen flex flex-col">
-        <h2 className="text-2xl font-bold mb-8 text-blue-500">TravelSplit</h2>
-        
-        <nav className="space-y-2 flex-1">
-          <button 
-            onClick={() => {
-              router.push('/');
-              fetchTrips();
-            }}
-            className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 font-semibold flex items-center gap-3 text-black"
-          >
-            <span className="text-xl">🏠</span>
-            Home
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">🔍</span>
-            Explore Trips
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">🔔</span>
-            Notifications
-          </button>
-          
-          <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
-            <span className="text-xl">💬</span>
-            Messages
-          </button>
-        </nav>
-
-        {/* Profile Menu - Twitter Style */}
-        <div className="relative mt-4">
-          <button
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="w-full flex items-center gap-3 p-3 rounded-full hover:bg-gray-100 transition-colors"
-          >
-            <img
-              src={userAvatar}
-              alt={userName}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-            <div className="flex-1 text-left">
-              <p className="font-semibold text-black text-sm">{userName}</p>
-              <p className="text-gray-500 text-xs truncate">{userEmail}</p>
-            </div>
-            <span className="text-xl">⋯</span>
-          </button>
-
-          {/* Dropdown Menu */}
-          {showProfileMenu && (
-            <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-50">
-              <button
-                onClick={() => {
-                  setShowProfileMenu(false);
-                  router.push('/profile');
-                }}
-                className="w-full text-left px-4 py-3 hover:bg-gray-100 flex items-center gap-3 text-black"
-              >
-                <span className="text-xl">👤</span>
-                View Profile
-              </button>
-              <button
-                onClick={() => {
-                  setShowProfileMenu(false);
-                  handleLogout();
-                }}
-                className="w-full text-left px-4 py-3 hover:bg-gray-100 flex items-center gap-3 text-red-600"
-              >
-                <span className="text-xl">🚪</span>
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-      </aside>
+      <Sidebar />
 
       {/* Main Content - Trips Feed */}
       <main className="flex-1 max-w-2xl border-r border-gray-200">
