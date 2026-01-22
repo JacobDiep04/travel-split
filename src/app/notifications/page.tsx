@@ -38,12 +38,17 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      console.log('🔍 Current user email:', user.email);
+
       // Fetch invitations
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('trip_invitations')
         .select('*')
         .eq('invited_user_email', user.email)
         .order('created_at', { ascending: false });
+
+      console.log('📧 Invitations data:', invitationsData);
+      console.log('❌ Invitations error:', invitationsError);
 
       if (invitationsError) {
         if (invitationsError.code === '42P01' || invitationsError.code === 'PGRST116') {
@@ -55,6 +60,8 @@ export default function Notifications() {
         throw invitationsError;
       }
 
+      console.log('✅ Found invitations:', invitationsData?.length);
+
       // Fetch related trip data
       const enrichedInvitations = await Promise.all(
         (invitationsData || []).map(async (invitation) => {
@@ -64,6 +71,8 @@ export default function Notifications() {
             .eq('id', invitation.trip_id)
             .single();
 
+          console.log('🗺️ Trip data for invitation:', invitation.id, tripData);
+
           return {
             ...invitation,
             trips: tripData
@@ -71,9 +80,10 @@ export default function Notifications() {
         })
       );
 
+      console.log('🎉 Final enriched invitations:', enrichedInvitations);
       setInvitations(enrichedInvitations);
     } catch (error: any) {
-      console.log('Error fetching invitations:', error);
+      console.log('💥 Error fetching invitations:', error);
       setInvitations([]);
     } finally {
       setLoading(false);
