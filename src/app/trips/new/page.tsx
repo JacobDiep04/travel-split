@@ -94,12 +94,14 @@ export default function NewTrip() {
       const participantsToAdd = [
         {
           trip_id: tripData.id,
-          name: ownerName
+          name: ownerName,
+          user_id: user.id  // Add user_id for the owner
         },
         // Add selected friends as participants
         ...selectedMembers.map(friend => ({
           trip_id: tripData.id,
-          name: friend.friend_name
+          name: friend.friend_name,
+          user_id: null  // They'll get user_id when they accept invitation
         }))
       ];
 

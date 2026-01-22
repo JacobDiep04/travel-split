@@ -110,23 +110,38 @@ export default function TripDetails() {
       const selectedFriend = friends.find(f => f.id === parseInt(selectedFriendId));
       if (!selectedFriend) throw new Error('Friend not found');
 
-      // Check if friend is already a participant
-      const alreadyAdded = participants.some(
-        p => p.name.toLowerCase() === selectedFriend.friend_name.toLowerCase()
-      );
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-      if (alreadyAdded) {
-        alert(`${selectedFriend.friend_name} is already a member of this trip!`);
+      // Check if friend already has an invitation
+      const { data: existingInvitation } = await supabase
+        .from('trip_invitations')
+        .select('*')
+        .eq('trip_id', tripId)
+        .eq('invited_user_email', selectedFriend.friend_email)
+        .single();
+
+      if (existingInvitation) {
+        if (existingInvitation.status === 'pending') {
+          alert(`An invitation has already been sent to ${selectedFriend.friend_name}!`);
+        } else if (existingInvitation.status === 'accepted') {
+          alert(`${selectedFriend.friend_name} is already a member of this trip!`);
+        } else if (existingInvitation.status === 'declined') {
+          alert(`${selectedFriend.friend_name} previously declined this invitation. You can send a new one if you'd like.`);
+        }
         setAddingMember(false);
         return;
       }
 
+      // Send invitation
       const { error } = await supabase
-        .from('participants')
+        .from('trip_invitations')
         .insert([
           {
             trip_id: tripId,
-            name: selectedFriend.friend_name
+            invited_user_email: selectedFriend.friend_email,
+            invited_by_user_id: user.id,
+            status: 'pending'
           }
         ]);
 
@@ -134,10 +149,10 @@ export default function TripDetails() {
 
       setSelectedFriendId('');
       setShowAddMemberModal(false);
-      fetchTripData(); // Refresh data
+      alert(`Invitation sent to ${selectedFriend.friend_name}! They will be notified.`);
     } catch (error) {
-      console.error('Error adding member:', error);
-      alert('Failed to add member. Please try again.');
+      console.error('Error sending invitation:', error);
+      alert('Failed to send invitation. Please try again.');
     } finally {
       setAddingMember(false);
     }

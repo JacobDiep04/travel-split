@@ -57,9 +57,43 @@ export default function Home() {
   const fetchTrips = async () => {
     try {
       setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get trips where user is a participant (has user_id set)
+      const { data: participantData, error: participantError } = await supabase
+        .from('participants')
+        .select('trip_id')
+        .eq('user_id', user.id);
+
+      if (participantError) throw participantError;
+
+      const participantTripIds = participantData?.map(p => p.trip_id) || [];
+
+      // Also get trips owned by user
+      const { data: ownedTrips, error: ownedError } = await supabase
+        .from('trips')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (ownedError) throw ownedError;
+
+      const ownedTripIds = ownedTrips?.map(t => t.id) || [];
+
+      // Combine both lists and remove duplicates
+      const allTripIds = [...new Set([...participantTripIds, ...ownedTripIds])];
+
+      if (allTripIds.length === 0) {
+        setTrips([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch all trips
       const { data, error } = await supabase
         .from('trips')
         .select('*')
+        .in('id', allTripIds)
         .order('date', { ascending: false });
 
       if (error) throw error;

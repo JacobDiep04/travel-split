@@ -15,6 +15,7 @@ export default function Notifications() {
   const [invitations, setInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [tableExists, setTableExists] = useState(true);
 
   useEffect(() => {
     checkAuthAndFetch();
@@ -55,10 +56,20 @@ export default function Notifications() {
         .eq('invited_user_email', user.email)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // If table doesn't exist yet, silently handle
+        if (error.code === '42P01') {
+          console.log('Trip invitations table not created yet. Please run the SQL schema.');
+          setInvitations([]);
+          setTableExists(false);
+          return;
+        }
+        throw error;
+      }
       setInvitations(data || []);
-    } catch (error) {
-      console.error('Error fetching invitations:', error);
+    } catch (error: any) {
+      console.log('Note: Trip invitations feature not set up yet. Run the SQL schema from trip-invitations-schema.sql');
+      setInvitations([]);
     } finally {
       setLoading(false);
     }
@@ -150,8 +161,29 @@ export default function Notifications() {
           <p className="text-gray-600 mt-2">Manage your trip invitations</p>
         </div>
 
-        {/* Pending Invitations */}
-        <div className="mb-8">
+        {!tableExists ? (
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-8 text-center">
+            <div className="text-6xl mb-4">🔧</div>
+            <h2 className="text-2xl font-bold text-blue-900 mb-4">Setup Required</h2>
+            <p className="text-blue-800 mb-4">
+              The trip invitations feature needs to be set up in your database.
+            </p>
+            <div className="bg-white rounded-lg p-4 text-left max-w-2xl mx-auto">
+              <p className="font-semibold text-gray-900 mb-2">To enable invitations:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                <li>Go to your Supabase Dashboard</li>
+                <li>Click "SQL Editor" in the left sidebar</li>
+                <li>Click "New Query"</li>
+                <li>Copy and paste the contents of <code className="bg-gray-100 px-2 py-1 rounded">trip-invitations-schema.sql</code></li>
+                <li>Click "Run" or press Ctrl/Cmd + Enter</li>
+                <li>Refresh this page</li>
+              </ol>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Pending Invitations */}
+            <div className="mb-8">
           <h2 className="text-xl font-bold text-black mb-4">Pending Invitations</h2>
           {pendingInvitations.length > 0 ? (
             <div className="space-y-4">
@@ -238,6 +270,8 @@ export default function Notifications() {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
       </main>
     </div>

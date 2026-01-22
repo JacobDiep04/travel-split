@@ -15,9 +15,11 @@ export default function Sidebar() {
   const [userEmail, setUserEmail] = useState<string>('');
   const [userAvatar, setUserAvatar] = useState<string>('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
     loadUserData();
+    fetchNotificationCount();
   }, []);
 
   const loadUserData = async () => {
@@ -36,6 +38,32 @@ export default function Sidebar() {
       setUserAvatar(avatar);
     } catch (error) {
       console.error('Error loading user data:', error);
+    }
+  };
+
+  const fetchNotificationCount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { count, error } = await supabase
+        .from('trip_invitations')
+        .select('*', { count: 'exact', head: true })
+        .eq('invited_user_email', user.email)
+        .eq('status', 'pending');
+
+      if (error) {
+        // If table doesn't exist yet, silently fail
+        if (error.code === '42P01') {
+          console.log('Trip invitations table not created yet. Run the SQL schema.');
+          return;
+        }
+        throw error;
+      }
+      setNotificationCount(count || 0);
+    } catch (error: any) {
+      // Don't show error to user, just log it
+      console.log('Note: Trip invitations feature not set up yet.');
     }
   };
 
@@ -65,9 +93,17 @@ export default function Sidebar() {
           Friends
         </button>
         
-        <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
+        <button 
+          onClick={() => router.push('/notifications')}
+          className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black relative"
+        >
           <span className="text-xl">🔔</span>
           Notifications
+          {notificationCount > 0 && (
+            <span className="absolute right-4 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+              {notificationCount}
+            </span>
+          )}
         </button>
         
         <button className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3 text-black">
