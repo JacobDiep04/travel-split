@@ -38,37 +38,42 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      // Fetch invitations
+      const { data: invitationsData, error: invitationsError } = await supabase
         .from('trip_invitations')
-        .select(`
-          *,
-          trips (
-            id,
-            name,
-            date,
-            total
-          ),
-          invited_by:invited_by_user_id (
-            email,
-            raw_user_meta_data
-          )
-        `)
+        .select('*')
         .eq('invited_user_email', user.email)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        // If table doesn't exist yet, silently handle
-        if (error.code === '42P01') {
+      if (invitationsError) {
+        if (invitationsError.code === '42P01' || invitationsError.code === 'PGRST116') {
           console.log('Trip invitations table not created yet. Please run the SQL schema.');
           setInvitations([]);
           setTableExists(false);
           return;
         }
-        throw error;
+        throw invitationsError;
       }
-      setInvitations(data || []);
+
+      // Fetch related trip data
+      const enrichedInvitations = await Promise.all(
+        (invitationsData || []).map(async (invitation) => {
+          const { data: tripData } = await supabase
+            .from('trips')
+            .select('id, name, date, total')
+            .eq('id', invitation.trip_id)
+            .single();
+
+          return {
+            ...invitation,
+            trips: tripData
+          };
+        })
+      );
+
+      setInvitations(enrichedInvitations);
     } catch (error: any) {
-      console.log('Note: Trip invitations feature not set up yet. Run the SQL schema from trip-invitations-schema.sql');
+      console.log('Error fetching invitations:', error);
       setInvitations([]);
     } finally {
       setLoading(false);
@@ -81,7 +86,6 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Add user as participant to the trip
       const userName = user.user_metadata?.name || user.email?.split('@')[0] || 'User';
       
       const { error: participantError } = await supabase
@@ -96,7 +100,6 @@ export default function Notifications() {
 
       if (participantError) throw participantError;
 
-      // Update invitation status to accepted
       const { error: updateError } = await supabase
         .from('trip_invitations')
         .update({ status: 'accepted' })
@@ -106,6 +109,7 @@ export default function Notifications() {
 
       await fetchInvitations();
       alert('Invitation accepted! You can now view this trip on your homepage.');
+      router.push('/');
     } catch (error: any) {
       console.error('Error accepting invitation:', error);
       alert('Failed to accept invitation. Please try again.');
@@ -174,8 +178,7 @@ export default function Notifications() {
                 <li>Go to your Supabase Dashboard</li>
                 <li>Click "SQL Editor" in the left sidebar</li>
                 <li>Click "New Query"</li>
-                <li>Copy and paste the contents of <code className="bg-gray-100 px-2 py-1 rounded">trip-invitations-schema.sql</code></li>
-                <li>Click "Run" or press Ctrl/Cmd + Enter</li>
+                <li>Run the trip invitations SQL schema</li>
                 <li>Refresh this page</li>
               </ol>
             </div>
@@ -184,93 +187,89 @@ export default function Notifications() {
           <>
             {/* Pending Invitations */}
             <div className="mb-8">
-          <h2 className="text-xl font-bold text-black mb-4">Pending Invitations</h2>
-          {pendingInvitations.length > 0 ? (
-            <div className="space-y-4">
-              {pendingInvitations.map((invitation) => (
-                <div key={invitation.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-2xl">✉️</span>
-                        <h3 className="text-lg font-bold text-black">Trip Invitation</h3>
+              <h2 className="text-xl font-bold text-black mb-4">Pending Invitations</h2>
+              {pendingInvitations.length > 0 ? (
+                <div className="space-y-4">
+                  {pendingInvitations.map((invitation) => (
+                    <div key={invitation.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-2xl">✉️</span>
+                            <h3 className="text-lg font-bold text-black">Trip Invitation</h3>
+                          </div>
+                          <p className="text-gray-700 mb-1">
+                            You've been invited to join{' '}
+                            <span className="font-semibold text-blue-600">{invitation.trips?.name || 'a trip'}</span>
+                          </p>
+                          {invitation.trips?.date && (
+                            <p className="text-sm text-gray-500">
+                              Date: {invitation.trips.date}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-2">
+                            Received {new Date(invitation.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleAcceptInvitation(invitation.id, invitation.trip_id)}
+                            disabled={processingId === invitation.id}
+                            className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {processingId === invitation.id ? 'Processing...' : 'Accept'}
+                          </button>
+                          <button
+                            onClick={() => handleDeclineInvitation(invitation.id)}
+                            disabled={processingId === invitation.id}
+                            className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-gray-700 mb-1">
-                        You've been invited to join{' '}
-                        <span className="font-semibold text-blue-600">{invitation.trips?.name}</span>
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Date: {invitation.trips?.date}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Invited by: {invitation.invited_by?.raw_user_meta_data?.name || invitation.invited_by?.email}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Received {new Date(invitation.created_at).toLocaleDateString()}
-                      </p>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                      <button
-                        onClick={() => handleAcceptInvitation(invitation.id, invitation.trip_id)}
-                        disabled={processingId === invitation.id}
-                        className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {processingId === invitation.id ? 'Processing...' : 'Accept'}
-                      </button>
-                      <button
-                        onClick={() => handleDeclineInvitation(invitation.id)}
-                        disabled={processingId === invitation.id}
-                        className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        Decline
-                      </button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
+                  <div className="text-6xl mb-4">📭</div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No pending invitations</h3>
+                  <p className="text-gray-500">You're all caught up!</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
-              <div className="text-6xl mb-4">📭</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No pending invitations</h3>
-              <p className="text-gray-500">You're all caught up!</p>
-            </div>
-          )}
-        </div>
 
-        {/* Previous Responses */}
-        {respondedInvitations.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold text-black mb-4">Previous Responses</h2>
-            <div className="space-y-4">
-              {respondedInvitations.map((invitation) => (
-                <div key={invitation.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 opacity-75">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-gray-700">
-                        <span className="font-semibold">{invitation.trips?.name}</span>
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Invited by: {invitation.invited_by?.raw_user_meta_data?.name || invitation.invited_by?.email}
-                      </p>
+            {/* Previous Responses */}
+            {respondedInvitations.length > 0 && (
+              <div>
+                <h2 className="text-xl font-bold text-black mb-4">Previous Responses</h2>
+                <div className="space-y-4">
+                  {respondedInvitations.map((invitation) => (
+                    <div key={invitation.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 opacity-75">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-gray-700">
+                            <span className="font-semibold">{invitation.trips?.name || 'Trip'}</span>
+                          </p>
+                        </div>
+                        <div>
+                          {invitation.status === 'accepted' ? (
+                            <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              ✓ Accepted
+                            </span>
+                          ) : (
+                            <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              ✗ Declined
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      {invitation.status === 'accepted' ? (
-                        <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
-                          ✓ Accepted
-                        </span>
-                      ) : (
-                        <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold">
-                          ✗ Declined
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
           </>
         )}
       </main>

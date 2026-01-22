@@ -20,6 +20,35 @@ export default function Sidebar() {
   useEffect(() => {
     loadUserData();
     fetchNotificationCount();
+
+    // Set up real-time subscription for notifications
+    const setupRealtimeSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const channel = supabase
+        .channel('trip_invitations_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'trip_invitations',
+            filter: `invited_user_email=eq.${user.email}`
+          },
+          (payload) => {
+            console.log('Invitation change detected:', payload);
+            fetchNotificationCount();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupRealtimeSubscription();
   }, []);
 
   const loadUserData = async () => {
@@ -100,8 +129,8 @@ export default function Sidebar() {
           <span className="text-xl">🔔</span>
           Notifications
           {notificationCount > 0 && (
-            <span className="absolute right-4 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-              {notificationCount}
+            <span className="absolute right-4 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+              {notificationCount > 9 ? '9+' : notificationCount}
             </span>
           )}
         </button>

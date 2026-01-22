@@ -546,10 +546,10 @@ export default function TripDetails() {
         {/* Header */}
         <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-gray-200 p-4">
           <button 
-            onClick={() => router.back()}
+            onClick={() => router.push('/')}
             className="text-blue-500 hover:text-blue-700 mb-2 flex items-center gap-1"
           >
-            ← Back
+            ← Back to Home
           </button>
           <div className="flex justify-between items-start">
             <div>
