@@ -5,6 +5,24 @@ import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import Sidebar from '@/components/Sidebar';
 
+interface Trip {
+  id: number;
+  name: string;
+  date: string;
+  total: string;
+  settled: boolean;
+  created_at: string;
+}
+
+interface Payment {
+  id: number;
+  person: string;
+  amount: string;
+  trip: string;
+  status: string;
+  due_date: string;
+}
+
 export default function Home() {
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -12,91 +30,37 @@ export default function Home() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   
-  const [trips, setTrips] = useState<any[]>([]);
-  const [outstandingPayments, setOutstandingPayments] = useState<any[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [outstandingPayments, setOutstandingPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
   const [greeting, setGreeting] = useState<string>('');
 
-  useEffect(() => {
-    const checkAuthAndFetch = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push('/auth/login');
-        return;
-      }
-
-      // Get user's name for greeting
-      const { data: { user } } = await supabase.auth.getUser();
-      const fullName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'there';
-      const firstName = fullName.split(' ')[0];
-      setUserName(firstName);
-
-      // Set greeting based on time of day
-      const hour = new Date().getHours();
-      if (hour < 12) {
-        setGreeting('Good morning');
-      } else if (hour < 18) {
-        setGreeting('Good afternoon');
-      } else {
-        setGreeting('Good evening');
-      }
-
-      await Promise.all([
-        fetchTrips(),
-        fetchPayments(),
-      ]);
-    };
-
-    checkAuthAndFetch();
-  }, [router]);
-
   const fetchTrips = async () => {
     try {
       setLoading(true);
+      
+      // Get current user ID
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Get trips where user is a participant (has user_id set)
-      const { data: participantData, error: participantError } = await supabase
-        .from('participants')
-        .select('trip_id')
-        .eq('user_id', user.id);
-
-      if (participantError) throw participantError;
-
-      const participantTripIds = participantData?.map(p => p.trip_id) || [];
-
-      // Also get trips owned by user
-      const { data: ownedTrips, error: ownedError } = await supabase
-        .from('trips')
-        .select('id')
-        .eq('user_id', user.id);
-
-      if (ownedError) throw ownedError;
-
-      const ownedTripIds = ownedTrips?.map(t => t.id) || [];
-
-      // Combine both lists and remove duplicates
-      const allTripIds = [...new Set([...participantTripIds, ...ownedTripIds])];
-
-      if (allTripIds.length === 0) {
-        setTrips([]);
+      
+      if (!user) {
+        console.error('No user found');
         setLoading(false);
         return;
       }
 
-      // Fetch all trips
       const { data, error } = await supabase
         .from('trips')
         .select('*')
-        .in('id', allTripIds)
-        .order('date', { ascending: false });
+        .eq('user_id', user.id) // Filter by user_id to avoid the recursive policy
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error fetching trips:');
+        console.error('Error JSON:', JSON.stringify(error, null, 2));
+        return;
+      }
+
       setTrips(data || []);
     } catch (error) {
       console.error('Error fetching trips:', error);
@@ -109,23 +73,64 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('payments')
-        .select('*, trips(name)')
-        .eq('settled', false);
+        .select('*')
+        // Removed .eq('status', 'outstanding') since status column doesn't exist
+        .order('due_date', { ascending: true });
 
-      if (error) throw error;
-      
-      const formatted = data?.map(payment => ({
-        id: payment.id,
-        person: payment.to_person,
-        amount: payment.amount,
-        trip: payment.trips?.name
-      }));
-      
-      setOutstandingPayments(formatted || []);
+      if (error) {
+        console.error('Supabase error fetching payments:');
+        console.error('Error JSON:', JSON.stringify(error, null, 2));
+        return;
+      }
+
+      setOutstandingPayments(data || []);
     } catch (error) {
       console.error('Error fetching payments:', error);
     }
   };
+
+  useEffect(() => {
+    const checkAuthAndFetch = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          router.push('/auth/login');
+          return;
+        }
+
+        // Get user's name for greeting
+        const { data: { user } } = await supabase.auth.getUser();
+        const fullName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'there';
+        const firstName = fullName.split(' ')[0];
+        setUserName(firstName);
+
+        // Set greeting based on time of day
+        const hour = new Date().getHours();
+        if (hour < 12) {
+          setGreeting('Good morning');
+        } else if (hour < 18) {
+          setGreeting('Good afternoon');
+        } else {
+          setGreeting('Good evening');
+        }
+
+        // Fetch data
+        await Promise.all([
+          fetchTrips(),
+          fetchPayments(),
+        ]);
+      } catch (error) {
+        console.error('Error in checkAuthAndFetch:', error);
+        setLoading(false);
+      }
+    };
+
+    checkAuthAndFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleViewDetails = (tripId: number) => {
     router.push(`/trips/${tripId}`);
