@@ -5,6 +5,31 @@ import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import Sidebar from '@/components/Sidebar';
 
+interface TripInvitation {
+  id: number;
+  trip_id: number;
+  invited_user_email: string;
+  invited_by_user_id: string;
+  status: string;
+  created_at: string;
+  trips?: {
+    id: number;
+    name: string;
+    date: string;
+    total: string;
+  };
+}
+
+interface FriendRequest {
+  id: number;
+  requester_user_id: string;
+  requester_email: string;
+  requester_name: string;
+  recipient_email: string;
+  status: string;
+  created_at: string;
+}
+
 export default function Notifications() {
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -12,7 +37,8 @@ export default function Notifications() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [invitations, setInvitations] = useState<any[]>([]);
+  const [tripInvitations, setTripInvitations] = useState<TripInvitation[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [tableExists, setTableExists] = useState(true);
@@ -29,7 +55,7 @@ export default function Notifications() {
       return;
     }
 
-    await fetchInvitations();
+    await Promise.all([fetchInvitations(), fetchFriendRequests()]);
   };
 
   const fetchInvitations = async () => {
@@ -52,8 +78,8 @@ export default function Notifications() {
 
       if (invitationsError) {
         if (invitationsError.code === '42P01' || invitationsError.code === 'PGRST116') {
-          console.log('Trip invitations table not created yet. Please run the SQL schema.');
-          setInvitations([]);
+          console.log('Trip invitations table not created yet.');
+          setTripInvitations([]);
           setTableExists(false);
           return;
         }
@@ -81,12 +107,44 @@ export default function Notifications() {
       );
 
       console.log('🎉 Final enriched invitations:', enrichedInvitations);
-      setInvitations(enrichedInvitations);
+      setTripInvitations(enrichedInvitations);
     } catch (error: any) {
       console.log('💥 Error fetching invitations:', error);
-      setInvitations([]);
+      setTripInvitations([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFriendRequests = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('🔍 Fetching friend requests for:', user.email);
+
+      const { data: requestsData, error: requestsError } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .eq('recipient_email', user.email)
+        .order('created_at', { ascending: false });
+
+      console.log('👥 Friend requests data:', requestsData);
+      console.log('❌ Friend requests error:', requestsError);
+
+      if (requestsError) {
+        if (requestsError.code === '42P01' || requestsError.code === 'PGRST116') {
+          console.log('Friend requests table not created yet.');
+          setFriendRequests([]);
+          return;
+        }
+        throw requestsError;
+      }
+
+      setFriendRequests(requestsData || []);
+    } catch (error: any) {
+      console.log('💥 Error fetching friend requests:', error);
+      setFriendRequests([]);
     }
   };
 
@@ -151,8 +209,60 @@ export default function Notifications() {
     }
   };
 
-  const pendingInvitations = invitations.filter(inv => inv.status === 'pending');
-  const respondedInvitations = invitations.filter(inv => inv.status !== 'pending');
+  const handleAcceptFriendRequest = async (requestId: number) => {
+    setProcessingId(requestId);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Update the friend request status
+      const { error: updateError } = await supabase
+        .from('friend_requests')
+        .update({ 
+          status: 'accepted',
+          recipient_user_id: user.id 
+        })
+        .eq('id', requestId);
+
+      if (updateError) throw updateError;
+
+      await fetchFriendRequests();
+      alert('Friend request accepted!');
+    } catch (error: any) {
+      console.error('Error accepting friend request:', error);
+      alert('Failed to accept friend request. Please try again.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeclineFriendRequest = async (requestId: number) => {
+    if (!confirm('Are you sure you want to decline this friend request?')) {
+      return;
+    }
+
+    setProcessingId(requestId);
+    try {
+      const { error } = await supabase
+        .from('friend_requests')
+        .update({ status: 'declined' })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      await fetchFriendRequests();
+    } catch (error) {
+      console.error('Error declining friend request:', error);
+      alert('Failed to decline friend request. Please try again.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const pendingTripInvitations = tripInvitations.filter(inv => inv.status === 'pending');
+  const respondedTripInvitations = tripInvitations.filter(inv => inv.status !== 'pending');
+  const pendingFriendRequests = friendRequests.filter(req => req.status === 'pending');
+  const respondedFriendRequests = friendRequests.filter(req => req.status !== 'pending');
 
   if (loading) {
     return (
@@ -165,6 +275,8 @@ export default function Notifications() {
     );
   }
 
+  const totalPending = pendingTripInvitations.length + pendingFriendRequests.length;
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -172,7 +284,14 @@ export default function Notifications() {
       <main className="flex-1 max-w-4xl p-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-black">Notifications</h1>
-          <p className="text-gray-600 mt-2">Manage your trip invitations</p>
+          <p className="text-gray-600 mt-2">
+            Manage your trip invitations and friend requests
+            {totalPending > 0 && (
+              <span className="ml-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                {totalPending} pending
+              </span>
+            )}
+          </p>
         </div>
 
         {!tableExists ? (
@@ -180,27 +299,76 @@ export default function Notifications() {
             <div className="text-6xl mb-4">🔧</div>
             <h2 className="text-2xl font-bold text-blue-900 mb-4">Setup Required</h2>
             <p className="text-blue-800 mb-4">
-              The trip invitations feature needs to be set up in your database.
+              The invitations feature needs to be set up in your database.
             </p>
             <div className="bg-white rounded-lg p-4 text-left max-w-2xl mx-auto">
               <p className="font-semibold text-gray-900 mb-2">To enable invitations:</p>
               <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
                 <li>Go to your Supabase Dashboard</li>
                 <li>Click "SQL Editor" in the left sidebar</li>
-                <li>Click "New Query"</li>
-                <li>Run the trip invitations SQL schema</li>
+                <li>Run the setup SQL schema</li>
                 <li>Refresh this page</li>
               </ol>
             </div>
           </div>
         ) : (
           <>
-            {/* Pending Invitations */}
+            {/* Pending Friend Requests */}
             <div className="mb-8">
-              <h2 className="text-xl font-bold text-black mb-4">Pending Invitations</h2>
-              {pendingInvitations.length > 0 ? (
+              <h2 className="text-xl font-bold text-black mb-4">Friend Requests</h2>
+              {pendingFriendRequests.length > 0 ? (
                 <div className="space-y-4">
-                  {pendingInvitations.map((invitation) => (
+                  {pendingFriendRequests.map((request) => (
+                    <div key={request.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-2xl">👤</span>
+                            <h3 className="text-lg font-bold text-black">Friend Request</h3>
+                          </div>
+                          <p className="text-gray-700 mb-1">
+                            <span className="font-semibold text-blue-600">{request.requester_name}</span>
+                            {' '}wants to be your friend
+                          </p>
+                          <p className="text-sm text-gray-500">{request.requester_email}</p>
+                          <p className="text-xs text-gray-400 mt-2">
+                            Received {new Date(request.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleAcceptFriendRequest(request.id)}
+                            disabled={processingId === request.id}
+                            className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {processingId === request.id ? 'Processing...' : 'Accept'}
+                          </button>
+                          <button
+                            onClick={() => handleDeclineFriendRequest(request.id)}
+                            disabled={processingId === request.id}
+                            className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow p-8 text-center border border-gray-200">
+                  <div className="text-4xl mb-2">👥</div>
+                  <p className="text-gray-500">No pending friend requests</p>
+                </div>
+              )}
+            </div>
+
+            {/* Pending Trip Invitations */}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-black mb-4">Trip Invitations</h2>
+              {pendingTripInvitations.length > 0 ? (
+                <div className="space-y-4">
+                  {pendingTripInvitations.map((invitation) => (
                     <div key={invitation.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -242,25 +410,48 @@ export default function Notifications() {
                   ))}
                 </div>
               ) : (
-                <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
-                  <div className="text-6xl mb-4">📭</div>
-                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No pending invitations</h3>
-                  <p className="text-gray-500">You're all caught up!</p>
+                <div className="bg-white rounded-lg shadow p-8 text-center border border-gray-200">
+                  <div className="text-4xl mb-2">📭</div>
+                  <p className="text-gray-500">No pending trip invitations</p>
                 </div>
               )}
             </div>
 
             {/* Previous Responses */}
-            {respondedInvitations.length > 0 && (
+            {(respondedTripInvitations.length > 0 || respondedFriendRequests.length > 0) && (
               <div>
                 <h2 className="text-xl font-bold text-black mb-4">Previous Responses</h2>
                 <div className="space-y-4">
-                  {respondedInvitations.map((invitation) => (
-                    <div key={invitation.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 opacity-75">
+                  {respondedFriendRequests.map((request) => (
+                    <div key={`friend-${request.id}`} className="bg-gray-50 rounded-lg p-4 border border-gray-200 opacity-75">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-gray-700">
+                            <span className="font-semibold">{request.requester_name}</span>
+                            <span className="text-gray-500 text-sm ml-2">(Friend Request)</span>
+                          </p>
+                        </div>
+                        <div>
+                          {request.status === 'accepted' ? (
+                            <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              ✓ Accepted
+                            </span>
+                          ) : (
+                            <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              ✗ Declined
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {respondedTripInvitations.map((invitation) => (
+                    <div key={`trip-${invitation.id}`} className="bg-gray-50 rounded-lg p-4 border border-gray-200 opacity-75">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <p className="text-gray-700">
                             <span className="font-semibold">{invitation.trips?.name || 'Trip'}</span>
+                            <span className="text-gray-500 text-sm ml-2">(Trip Invitation)</span>
                           </p>
                         </div>
                         <div>
