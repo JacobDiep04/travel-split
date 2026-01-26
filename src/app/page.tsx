@@ -40,7 +40,6 @@ export default function Home() {
     try {
       setLoading(true);
       
-      // Get current user ID
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -49,54 +48,24 @@ export default function Home() {
         return;
       }
 
-      // Fetch trips where user is the owner
-      const { data: ownedTrips, error: ownedError } = await supabase
+      console.log('🔍 Fetching trips for user:', user.id);
+
+      // Fetch ALL trips - RLS policies will automatically filter to show:
+      // 1. Trips you own (user_id = your id)
+      // 2. Trips you're a participant in
+      const { data, error } = await supabase
         .from('trips')
         .select('*')
-        .eq('user_id', user.id);
+        .order('created_at', { ascending: false });
 
-      if (ownedError) {
-        console.error('Error fetching owned trips:', ownedError);
+      console.log('🗺️ Trips returned:', data?.length || 0);
+
+      if (error) {
+        console.error('Error fetching trips:', JSON.stringify(error, null, 2));
+        return;
       }
 
-      // Fetch trips where user is a participant
-      const { data: participantTrips, error: participantError } = await supabase
-        .from('participants')
-        .select('trip_id')
-        .eq('user_id', user.id);
-
-      if (participantError) {
-        console.error('Error fetching participant trips:', participantError);
-      }
-
-      // Get the full trip details for participant trips
-      let invitedTrips: Trip[] = [];
-      if (participantTrips && participantTrips.length > 0) {
-        const tripIds = participantTrips.map(p => p.trip_id);
-        const { data: invitedTripsData, error: invitedError } = await supabase
-          .from('trips')
-          .select('*')
-          .in('id', tripIds);
-
-        if (invitedError) {
-          console.error('Error fetching invited trips:', invitedError);
-        } else {
-          invitedTrips = invitedTripsData || [];
-        }
-      }
-
-      // Combine and deduplicate trips
-      const allTrips = [...(ownedTrips || []), ...invitedTrips];
-      const uniqueTrips = Array.from(
-        new Map(allTrips.map(trip => [trip.id, trip])).values()
-      );
-
-      // Sort by created_at
-      uniqueTrips.sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-
-      setTrips(uniqueTrips);
+      setTrips(data || []);
     } catch (error) {
       console.error('Error fetching trips:', error);
     } finally {
@@ -109,12 +78,10 @@ export default function Home() {
       const { data, error } = await supabase
         .from('payments')
         .select('*')
-        // Removed .eq('status', 'outstanding') since status column doesn't exist
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error('Supabase error fetching payments:');
-        console.error('Error JSON:', JSON.stringify(error, null, 2));
+        console.error('Error fetching payments:', JSON.stringify(error, null, 2));
         return;
       }
 
@@ -127,22 +94,18 @@ export default function Home() {
   useEffect(() => {
     const checkAuthAndFetch = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
           router.push('/auth/login');
           return;
         }
 
-        // Get user's name for greeting
         const { data: { user } } = await supabase.auth.getUser();
         const fullName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'there';
         const firstName = fullName.split(' ')[0];
         setUserName(firstName);
 
-        // Set greeting based on time of day
         const hour = new Date().getHours();
         if (hour < 12) {
           setGreeting('Good morning');
@@ -152,11 +115,7 @@ export default function Home() {
           setGreeting('Good evening');
         }
 
-        // Fetch data
-        await Promise.all([
-          fetchTrips(),
-          fetchPayments(),
-        ]);
+        await Promise.all([fetchTrips(), fetchPayments()]);
       } catch (error) {
         console.error('Error in checkAuthAndFetch:', error);
         setLoading(false);
@@ -164,7 +123,6 @@ export default function Home() {
     };
 
     checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleViewDetails = (tripId: number) => {
@@ -181,10 +139,8 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Left Sidebar - Navigation */}
       <Sidebar />
 
-      {/* Main Content - Trips Feed */}
       <main className="flex-1 max-w-2xl border-r border-gray-200">
         <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-gray-200 p-4">
           <div className="flex justify-between items-center">
@@ -204,7 +160,6 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {/* Active Trips */}
             <div className="border-b border-gray-200 p-4">
               <h2 className="font-bold text-lg mb-3 text-black">Active Trips</h2>
               {trips.filter(trip => !trip.settled).length === 0 ? (
@@ -229,7 +184,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Previous Trips */}
             <div className="p-4">
               <h2 className="font-bold text-lg mb-3 text-black">Previous Trips</h2>
               {trips.filter(trip => trip.settled).length === 0 ? (
@@ -260,7 +214,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* Right Sidebar - Outstanding Payments */}
       <aside className="w-80 bg-white p-6 sticky top-0 h-screen overflow-y-auto">
         <div className="bg-gray-50 rounded-lg p-4">
           <h2 className="font-bold text-lg mb-4 text-black">You Owe</h2>
@@ -297,7 +250,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* People Owe You Section */}
         <div className="bg-gray-50 rounded-lg p-4 mt-4">
           <h2 className="font-bold text-lg mb-4 text-black">Owes You</h2>
           <div className="text-center text-gray-500 py-4">
