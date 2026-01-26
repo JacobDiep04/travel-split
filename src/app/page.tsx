@@ -49,19 +49,54 @@ export default function Home() {
         return;
       }
 
-      const { data, error } = await supabase
+      // Fetch trips where user is the owner
+      const { data: ownedTrips, error: ownedError } = await supabase
         .from('trips')
         .select('*')
-        .eq('user_id', user.id) // Filter by user_id to avoid the recursive policy
-        .order('created_at', { ascending: false });
+        .eq('user_id', user.id);
 
-      if (error) {
-        console.error('Supabase error fetching trips:');
-        console.error('Error JSON:', JSON.stringify(error, null, 2));
-        return;
+      if (ownedError) {
+        console.error('Error fetching owned trips:', ownedError);
       }
 
-      setTrips(data || []);
+      // Fetch trips where user is a participant
+      const { data: participantTrips, error: participantError } = await supabase
+        .from('participants')
+        .select('trip_id')
+        .eq('user_id', user.id);
+
+      if (participantError) {
+        console.error('Error fetching participant trips:', participantError);
+      }
+
+      // Get the full trip details for participant trips
+      let invitedTrips: Trip[] = [];
+      if (participantTrips && participantTrips.length > 0) {
+        const tripIds = participantTrips.map(p => p.trip_id);
+        const { data: invitedTripsData, error: invitedError } = await supabase
+          .from('trips')
+          .select('*')
+          .in('id', tripIds);
+
+        if (invitedError) {
+          console.error('Error fetching invited trips:', invitedError);
+        } else {
+          invitedTrips = invitedTripsData || [];
+        }
+      }
+
+      // Combine and deduplicate trips
+      const allTrips = [...(ownedTrips || []), ...invitedTrips];
+      const uniqueTrips = Array.from(
+        new Map(allTrips.map(trip => [trip.id, trip])).values()
+      );
+
+      // Sort by created_at
+      uniqueTrips.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setTrips(uniqueTrips);
     } catch (error) {
       console.error('Error fetching trips:', error);
     } finally {

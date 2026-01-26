@@ -66,15 +66,11 @@ export default function Notifications() {
 
       console.log('🔍 Current user email:', user.email);
 
-      // Fetch invitations
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('trip_invitations')
         .select('*')
         .eq('invited_user_email', user.email)
         .order('created_at', { ascending: false });
-
-      console.log('📧 Invitations data:', invitationsData);
-      console.log('❌ Invitations error:', invitationsError);
 
       if (invitationsError) {
         if (invitationsError.code === '42P01' || invitationsError.code === 'PGRST116') {
@@ -86,9 +82,6 @@ export default function Notifications() {
         throw invitationsError;
       }
 
-      console.log('✅ Found invitations:', invitationsData?.length);
-
-      // Fetch related trip data
       const enrichedInvitations = await Promise.all(
         (invitationsData || []).map(async (invitation) => {
           const { data: tripData } = await supabase
@@ -97,8 +90,6 @@ export default function Notifications() {
             .eq('id', invitation.trip_id)
             .single();
 
-          console.log('🗺️ Trip data for invitation:', invitation.id, tripData);
-
           return {
             ...invitation,
             trips: tripData
@@ -106,7 +97,6 @@ export default function Notifications() {
         })
       );
 
-      console.log('🎉 Final enriched invitations:', enrichedInvitations);
       setTripInvitations(enrichedInvitations);
     } catch (error: any) {
       console.log('💥 Error fetching invitations:', error);
@@ -121,16 +111,11 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      console.log('🔍 Fetching friend requests for:', user.email);
-
       const { data: requestsData, error: requestsError } = await supabase
         .from('friend_requests')
         .select('*')
         .eq('recipient_email', user.email)
         .order('created_at', { ascending: false });
-
-      console.log('👥 Friend requests data:', requestsData);
-      console.log('❌ Friend requests error:', requestsError);
 
       if (requestsError) {
         if (requestsError.code === '42P01' || requestsError.code === 'PGRST116') {
@@ -151,12 +136,21 @@ export default function Notifications() {
   const handleAcceptInvitation = async (invitationId: number, tripId: number) => {
     setProcessingId(invitationId);
     try {
+      console.log('🎯 Starting to accept invitation:', invitationId, 'for trip:', tripId);
+      
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      console.log('👤 Current user:', user.id, user.email);
 
       const userName = user.user_metadata?.name || user.email?.split('@')[0] || 'User';
       
-      const { error: participantError } = await supabase
+      console.log('📝 Inserting participant:', { trip_id: tripId, name: userName, user_id: user.id });
+      
+      // Insert participant
+      const { data: participantData, error: participantError } = await supabase
         .from('participants')
         .insert([
           {
@@ -164,23 +158,55 @@ export default function Notifications() {
             name: userName,
             user_id: user.id
           }
-        ]);
+        ])
+        .select();
 
-      if (participantError) throw participantError;
+      if (participantError) {
+        console.error('❌ Participant insert error:', {
+          message: participantError.message,
+          details: participantError.details,
+          hint: participantError.hint,
+          code: participantError.code
+        });
+        throw participantError;
+      }
 
-      const { error: updateError } = await supabase
+      console.log('✅ Participant inserted:', participantData);
+
+      // Update invitation status
+      console.log('📝 Updating invitation status to accepted');
+      
+      const { data: updateData, error: updateError } = await supabase
         .from('trip_invitations')
         .update({ status: 'accepted' })
-        .eq('id', invitationId);
+        .eq('id', invitationId)
+        .select();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('❌ Update invitation error:', {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code
+        });
+        throw updateError;
+      }
+
+      console.log('✅ Invitation updated:', updateData);
 
       await fetchInvitations();
       alert('Invitation accepted! You can now view this trip on your homepage.');
       router.push('/');
     } catch (error: any) {
-      console.error('Error accepting invitation:', error);
-      alert('Failed to accept invitation. Please try again.');
+      console.error('❌ Error accepting invitation:', {
+        error: error,
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        stringified: JSON.stringify(error)
+      });
+      alert(`Failed to accept invitation: ${error?.message || 'Unknown error'}`);
     } finally {
       setProcessingId(null);
     }
@@ -198,12 +224,19 @@ export default function Notifications() {
         .update({ status: 'declined' })
         .eq('id', invitationId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error declining:', {
+          message: error.message,
+          code: error.code,
+          details: error.details
+        });
+        throw error;
+      }
 
       await fetchInvitations();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error declining invitation:', error);
-      alert('Failed to decline invitation. Please try again.');
+      alert(`Failed to decline invitation: ${error?.message || 'Unknown error'}`);
     } finally {
       setProcessingId(null);
     }
@@ -215,7 +248,6 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Update the friend request status
       const { error: updateError } = await supabase
         .from('friend_requests')
         .update({ 
@@ -224,13 +256,20 @@ export default function Notifications() {
         })
         .eq('id', requestId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Error accepting friend request:', {
+          message: updateError.message,
+          code: updateError.code,
+          details: updateError.details
+        });
+        throw updateError;
+      }
 
       await fetchFriendRequests();
       alert('Friend request accepted!');
     } catch (error: any) {
       console.error('Error accepting friend request:', error);
-      alert('Failed to accept friend request. Please try again.');
+      alert(`Failed to accept friend request: ${error?.message || 'Unknown error'}`);
     } finally {
       setProcessingId(null);
     }
@@ -248,12 +287,19 @@ export default function Notifications() {
         .update({ status: 'declined' })
         .eq('id', requestId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error declining:', {
+          message: error.message,
+          code: error.code,
+          details: error.details
+        });
+        throw error;
+      }
 
       await fetchFriendRequests();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error declining friend request:', error);
-      alert('Failed to decline friend request. Please try again.');
+      alert(`Failed to decline friend request: ${error?.message || 'Unknown error'}`);
     } finally {
       setProcessingId(null);
     }
@@ -301,15 +347,6 @@ export default function Notifications() {
             <p className="text-blue-800 mb-4">
               The invitations feature needs to be set up in your database.
             </p>
-            <div className="bg-white rounded-lg p-4 text-left max-w-2xl mx-auto">
-              <p className="font-semibold text-gray-900 mb-2">To enable invitations:</p>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                <li>Go to your Supabase Dashboard</li>
-                <li>Click "SQL Editor" in the left sidebar</li>
-                <li>Run the setup SQL schema</li>
-                <li>Refresh this page</li>
-              </ol>
-            </div>
           </div>
         ) : (
           <>
